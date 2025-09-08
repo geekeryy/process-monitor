@@ -5,7 +5,7 @@ echo "=== 安装matplotlib可视化依赖 ==="
 
 # 检查Python版本
 echo "1. 检查Python环境..."
-if command -v python3 &> /dev/null; then
+if command -v python3 &>/dev/null; then
     python3 --version
 else
     echo "错误: Python3 未安装"
@@ -15,7 +15,7 @@ fi
 # 检查pip
 echo
 echo "2. 检查pip..."
-if command -v pip3 &> /dev/null; then
+if command -v pip3 &>/dev/null; then
     pip3 --version
 else
     echo "错误: pip3 未安装"

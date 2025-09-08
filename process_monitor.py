@@ -761,11 +761,20 @@ class ProcessMonitor:
                 # Use lsof to count file descriptors
                 cmd = ['lsof', '-p', str(pid)]
                 result = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
-                if result.returncode == 0:
+                if result.returncode == 0 and result.stdout.strip():
                     # Count lines (excluding header)
                     lines = result.stdout.strip().split('\n')
-                    fd_count = max(0, len(lines) - 1)  # Subtract header line
-                    return {'fd_count': fd_count}
+                    if len(lines) > 0:
+                        # Check if we have a valid header line
+                        if 'COMMAND' in lines[0] and 'FD' in lines[0]:
+                            fd_count = max(0, len(lines) - 1)  # Subtract header line
+                        else:
+                            # No header, count all lines
+                            fd_count = len(lines)
+                        return {'fd_count': fd_count}
+                elif result.returncode != 0:
+                    # lsof failed, possibly due to permissions or process not found
+                    logger.debug(f"lsof failed for PID {pid}: {result.stderr}")
                 return {'fd_count': 0}
             else:  # Linux
                 # Count files in /proc/pid/fd directory
@@ -788,15 +797,22 @@ class ProcessMonitor:
             system = platform.system()
             
             if system == "Darwin":  # macOS
-                # Use ps to get thread count
-                cmd = ['ps', '-p', str(pid), '-o', 'pid,nlwp']
+                # Use ps -M to get thread count (count lines minus header)
+                cmd = ['ps', '-p', str(pid), '-M']
                 result = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
                 if result.returncode == 0 and result.stdout.strip():
                     lines = result.stdout.strip().split('\n')
-                    if len(lines) >= 2:
-                        parts = lines[1].split()
-                        if len(parts) >= 2:
-                            return {'thread_count': int(parts[1]) if parts[1].isdigit() else 0}
+                    if len(lines) > 0:
+                        # Check if we have a valid header line
+                        if 'USER' in lines[0] and 'PID' in lines[0]:
+                            thread_count = max(0, len(lines) - 1)  # Subtract header line
+                        else:
+                            # No header, count all lines
+                            thread_count = len(lines)
+                        return {'thread_count': thread_count}
+                elif result.returncode != 0:
+                    # ps failed, possibly due to process not found
+                    logger.debug(f"ps -M failed for PID {pid}: {result.stderr}")
                 return {'thread_count': 0}
             else:  # Linux
                 # Read from /proc/pid/status
@@ -1332,7 +1348,7 @@ class ProcessMonitor:
                 axes = axes.reshape(1, -1)
             
             # Set main title with better styling
-            fig.suptitle('Process Resource Monitoring Report', fontsize=18, fontweight='bold', y=0.94)
+            fig.suptitle('Process Resource Monitoring Report', fontsize=18, fontweight='bold', y=0.95)
             
             # Create charts for each metric and target
             for metric_idx, metric in enumerate(enabled_metrics):
@@ -1423,7 +1439,7 @@ class ProcessMonitor:
             # Increase spacing between subplots with more white space around charts
             plt.subplots_adjust(
                 bottom=0.15,  # More space at bottom for x-axis labels
-                top=0.90,     # More space at top for title
+                top=0.88,     # More space at top for title
                 left=0.10,    # More space on left
                 right=0.92,   # More space on right
                 hspace=0.8,   # Reduced vertical spacing between charts
@@ -1437,6 +1453,11 @@ class ProcessMonitor:
             elif self.report_dir:
                 # Auto-save to report directory if no specific output file
                 chart_file = os.path.join(self.report_dir, "performance_chart.png")
+                plt.savefig(chart_file, dpi=300, bbox_inches='tight')
+                logger.info(f"Chart saved to: {chart_file}")
+            else:
+                # Default save to current directory if no output file or report directory
+                chart_file = "performance_chart.png"
                 plt.savefig(chart_file, dpi=300, bbox_inches='tight')
                 logger.info(f"Chart saved to: {chart_file}")
             
